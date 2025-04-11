@@ -267,6 +267,7 @@ jobs:
                 await clientPage.screenshot({ path: path.join(screenshotsDir, `step8_after_60secs_${i}.png`), fullPage: true });
                 console.log(`Iteration ${i}: 60-second wait completed. Final screenshot captured for iteration ${i}.`);
               } // End loop
+              console.log("Extra watch time started.");
               await new Promise(resolve => setTimeout(resolve, 900000));
               
             } catch (error) {
