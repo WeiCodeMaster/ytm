@@ -66,14 +66,16 @@ jobs:
               process.exit(1);
             }
 
-            // Connect to a real browser instance using puppeteer-real-browser in headless mode.
+            // Connect to a real browser instance using puppeteer-real-browser.
+            // '--disable-popup-blocking' ensures pop-ups are not blocked.
             const { browser, page } = await connect({
               headless: true,
               args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--window-size=1280,800'
+                '--window-size=1280,800',
+                '--disable-popup-blocking'
               ],
               customConfig: {
                 defaultViewport: { width: 1280, height: 800 }
@@ -140,23 +142,36 @@ jobs:
               const clientPage = await newPagePromise;
               console.log("Client page opened.");
 
-              // Attempt to wait for navigation on the client page.
-              console.log("Attempting to wait for navigation event on the client page...");
+              // Attempt to wait briefly for a navigation event (5-second timeout).
+              console.log("Checking for navigation event on the client page for 5 seconds...");
               try {
-                await clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 });
+                await clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 5000 });
                 console.log("Navigation event detected on the client page.");
               } catch (e) {
-                console.warn("No navigation event on client page. Error details: ", e.message);
-                console.warn("Proceeding with a fixed delay of 5 seconds.");
+                console.warn("No navigation event detected on the client page. Proceeding with a fixed delay of 5 seconds.");
               }
               
               console.log("Starting fixed delay (5 seconds) using setTimeout...");
               await new Promise(resolve => setTimeout(resolve, 5000));
               console.log("Fixed delay completed.");
-
-              // Capture final screenshot of the client page.
+              
+              // Capture a screenshot of the client page.
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step6_client_opened.png"), fullPage: true });
               console.log("Client page screenshot captured successfully.");
+
+              // Step 7: Unmaximize the client window and click the Start button.
+              console.log("Unmaximizing client window...");
+              await clientPage.setViewport({ width: 800, height: 600 });
+              console.log("Client window unmaximized.");
+              
+              console.log("Waiting for the Start button to become visible...");
+              await clientPage.waitForSelector('#startBtn', { visible: true, timeout: 30000 });
+              await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_before_start.png"), fullPage: true });
+              
+              console.log("Clicking the Start button...");
+              await clientPage.click('#startBtn');
+              await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_after_start.png"), fullPage: true });
+              console.log("Start button clicked successfully.");
             } catch (error) {
               console.error("An error occurred during the process:", error.message);
               await page.screenshot({ path: path.join(screenshotsDir, "error.png"), fullPage: true });
