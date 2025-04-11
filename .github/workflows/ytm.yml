@@ -84,7 +84,7 @@ jobs:
             });
 
             try {
-              // STEP 1: Navigate to login page.
+              // STEP 1: Navigate to the login page.
               console.log("Navigating to https://www.ytmonster.net/exchange/views ...");
               await page.goto("https://www.ytmonster.net/exchange/views", { waitUntil: "domcontentloaded", timeout: 60000 });
               await page.screenshot({ path: path.join(screenshotsDir, "step1_navigate.png"), fullPage: true });
@@ -139,7 +139,7 @@ jobs:
               const clientPage = await newPagePromise;
               console.log("Client page opened.");
 
-              // Try brief wait for navigation (5s).
+              // Attempt a brief wait for navigation (5s).
               console.log("Checking for navigation event on the client page for 5 seconds...");
               try {
                 await clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 5000 });
@@ -155,17 +155,17 @@ jobs:
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step6_client_opened.png"), fullPage: true });
               console.log("Client page screenshot captured.");
 
-              // STEP 7: Unmaximize and click Start.
+              // STEP 7: Unmaximize and click the Start button.
               console.log("[DEBUG] Attempting to unmaximize the client window...");
 
-              // 7a) Log current viewport from inside the page:
+              // 7a) Log current viewport from inside the page.
               let dimsBefore = await clientPage.evaluate(() => ({
                 w: window.innerWidth, 
                 h: window.innerHeight
               }));
               console.log(`[DEBUG] Current window.innerWidth=${dimsBefore.w}, window.innerHeight=${dimsBefore.h} (before resizing).`);
 
-              // 7b) Set viewport to a smaller size, then attempt window.resizeTo inside the page.
+              // 7b) Set viewport to a smaller size and try to unmaximize via window.resizeTo.
               const UNMAX_WIDTH = 800;
               const UNMAX_HEIGHT = 600;
 
@@ -177,25 +177,26 @@ jobs:
                 window.resizeTo(w, h);
               }, UNMAX_WIDTH, UNMAX_HEIGHT);
 
-              // Wait for the page to process the resize.
+              // Wait briefly for the page to adjust.
               await new Promise(resolve => setTimeout(resolve, 3000));
 
-              // 7c) Log new viewport from inside the page:
+              // 7c) Log new viewport dimensions from inside the page.
               let dimsAfter = await clientPage.evaluate(() => ({
                 w: window.innerWidth, 
                 h: window.innerHeight
               }));
               console.log(`[DEBUG] After resizing, window.innerWidth=${dimsAfter.w}, window.innerHeight=${dimsAfter.h}.`);
 
-              // 7d) Check whether the unmaximize error is still present in the page text:
+              // 7d) Check if the unmaximize error message is still visible.
               const bodyText = await clientPage.evaluate(() => document.body.innerText || "");
               if (bodyText.includes("Please unmaximize the client window")) {
                 console.warn("[DEBUG] The 'unmaximize window' error text is still present in the page.");
+                console.warn("[DEBUG] Error snippet:", bodyText.substr(bodyText.indexOf("Please unmaximize"), 200));
               } else {
-                console.log("[DEBUG] The 'unmaximize window' error text not found in document.body.");
+                console.log("[DEBUG] The 'unmaximize window' error text was not found in the document body.");
               }
 
-              // Take a screenshot
+              // Take a screenshot after the unmaximize attempt.
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_unmaximized.png"), fullPage: true });
               console.log("[DEBUG] Screenshot taken after unmaximize attempt.");
 
@@ -206,8 +207,8 @@ jobs:
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_after_start_click.png"), fullPage: true });
               console.log("Start button clicked.");
 
-              // STEP 8: Check for new window after Start, then wait 30s.
-              console.log("Waiting 5s to see if a new window opens after Start...");
+              // STEP 8: Check for a new window after Start and wait 30 seconds.
+              console.log("Waiting 5 seconds to see if a new window opens after Start...");
               const newWindowPromise = new Promise(resolve => {
                 let newWindowDetected = false;
                 const checkStart = Date.now();
@@ -219,6 +220,12 @@ jobs:
                     console.log("New window opened after Start. Taking a screenshot...");
                     const popupPage = await target.page();
                     await popupPage.screenshot({ path: path.join(screenshotsDir, "step8_new_window_after_start.png"), fullPage: true });
+                    // Remove listener safely.
+                    if (typeof browser.removeListener === 'function') {
+                      browser.removeListener('targetcreated', listener);
+                    } else if (typeof browser.off === 'function') {
+                      browser.off('targetcreated', listener);
+                    }
                     resolve();
                   }
                 };
@@ -228,7 +235,11 @@ jobs:
                 const interval = setInterval(() => {
                   if (Date.now() - checkStart >= maxCheckTime) {
                     clearInterval(interval);
-                    browser.removeListener('targetcreated', listener);
+                    if (typeof browser.removeListener === 'function') {
+                      browser.removeListener('targetcreated', listener);
+                    } else if (typeof browser.off === 'function') {
+                      browser.off('targetcreated', listener);
+                    }
                     if (!newWindowDetected) {
                       console.log("No new window was detected within 5 seconds after Start.");
                     }
