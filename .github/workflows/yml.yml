@@ -2,13 +2,13 @@ name: YTMonster Login Workflow
 
 on:
   schedule:
-    - cron: '0 */1 * * *'  # Run every 1 hour (adjust as needed)
+    - cron: '0 */1 * * *'  # Run every 1 hour (adjust if needed)
   workflow_dispatch:
 
 jobs:
   login-job:
     runs-on: ubuntu-latest
-    
+
     env:
       YTMONSTER_USERNAME: ${{ secrets.YTMONSTER_USERNAME }}
       YTMONSTER_PASSWORD: ${{ secrets.YTMONSTER_PASSWORD }}
@@ -16,17 +16,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
+
       - name: Install dependencies
         run: |
           echo "Initializing npm project..."
           npm init -y
-          echo "Installing puppeteer-real-browser dependency..."
+          echo "Installing puppeteer-real-browser..."
           npm install puppeteer-real-browser
 
       - name: System information
@@ -52,7 +52,7 @@ jobs:
           const path = require('path');
 
           (async () => {
-            // Create a screenshots directory (relative to the repository root)
+            // Define screenshots directory relative to repository root.
             const screenshotsDir = path.join(__dirname, '../screenshots');
             if (!fs.existsSync(screenshotsDir)) {
               fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -62,11 +62,11 @@ jobs:
             const username = process.env.YTMONSTER_USERNAME;
             const password = process.env.YTMONSTER_PASSWORD;
             if (!username || !password) {
-              console.error("Missing credentials! Make sure YTMONSTER_USERNAME and YTMONSTER_PASSWORD are set.");
+              console.error("Missing credentials! Ensure YTMONSTER_USERNAME and YTMONSTER_PASSWORD are set.");
               process.exit(1);
             }
 
-            // Connect to a real browser instance in headless mode.
+            // Connect to the browser using puppeteer-real-browser in headless mode.
             const { browser, page } = await connect({
               headless: true,
               args: [
@@ -78,7 +78,7 @@ jobs:
               customConfig: {
                 defaultViewport: { width: 1280, height: 800 }
               },
-              turnstile: true, // Enables Cloudflare challenge solving if needed.
+              turnstile: true, // Enables Cloudflare challenge solving if required.
             });
 
             try {
@@ -87,31 +87,38 @@ jobs:
               await page.goto("https://www.ytmonster.net/exchange/views", { waitUntil: "domcontentloaded", timeout: 60000 });
               await page.screenshot({ path: path.join(screenshotsDir, "step1_navigate.png"), fullPage: true });
 
-              // Step 2: Wait for the login form to load.
-              console.log("Waiting for login form...");
-              // (Adjust the selectors if needed. This example assumes the username and password fields use these selectors.)
-              await page.waitForSelector("input[name='username']", { visible: true, timeout: 30000 });
-              await page.waitForSelector("input[name='password']", { visible: true, timeout: 30000 });
-              await page.screenshot({ path: path.join(screenshotsDir, "step2_login_form.png"), fullPage: true });
+              // Step 2: Wait for the login form elements.
+              console.log("Waiting for login form elements...");
+              await page.waitForSelector('#inputUsername', { visible: true, timeout: 30000 });
+              await page.waitForSelector('#inputPassword', { visible: true, timeout: 30000 });
+              await page.screenshot({ path: path.join(screenshotsDir, "step2_login_form_loaded.png"), fullPage: true });
 
-              // Step 3: Fill in the login credentials.
-              console.log("Filling in username and password...");
-              await page.type("input[name='username']", username, { delay: 100 });
-              await page.type("input[name='password']", password, { delay: 100 });
-              await page.screenshot({ path: path.join(screenshotsDir, "step3_filled_credentials.png"), fullPage: true });
+              // Step 3: Type in the credentials.
+              console.log("Filling in credentials...");
+              await page.type('#inputUsername', username, { delay: 100 });
+              await page.type('#inputPassword', password, { delay: 100 });
+              await page.screenshot({ path: path.join(screenshotsDir, "step3_credentials_filled.png"), fullPage: true });
 
-              // Step 4: Click the login/submit button.
-              console.log("Attempting to log in...");
+              // Step 4: Click the Login button.
+              console.log("Submitting the form...");
               await page.waitForSelector("button[type='submit']", { visible: true, timeout: 30000 });
               await page.click("button[type='submit']");
-              await page.screenshot({ path: path.join(screenshotsDir, "step4_after_click.png"), fullPage: true });
+              await page.screenshot({ path: path.join(screenshotsDir, "step4_after_submit_click.png"), fullPage: true });
 
-              // Step 5: Wait for navigation or any indication that login was successful.
-              console.log("Waiting for navigation after login...");
-              await page.waitForNavigation({ timeout: 60000 });
+              // Step 5: Wait for a successful login.
+              // Some pages might not trigger traditional navigation, so check for a change in the page.
+              console.log("Waiting for login success...");
+              try {
+                // Try waiting for a navigation event.
+                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 });
+              } catch (navError) {
+                console.warn("No full navigation occurred; verifying login via disappearance of the login form.");
+              }
+              // Verify that the login form has disappeared.
+              await page.waitForFunction(() => !document.querySelector("#formLogin"), { timeout: 30000 });
               await page.screenshot({ path: path.join(screenshotsDir, "step5_logged_in.png"), fullPage: true });
 
-              console.log("Login process completed successfully.");
+              console.log("Login successful.");
             } catch (error) {
               console.error("An error occurred during the login process:", error.message);
               await page.screenshot({ path: path.join(screenshotsDir, "error.png"), fullPage: true });
@@ -124,7 +131,7 @@ jobs:
 
       - name: Run YTMonster Login Script
         run: |
-          echo "Running login script..."
+          echo "Running YTMonster login script..."
           node scripts/ytmonster-login.js | tee script_output.log
 
       - name: Upload Debug Artifacts
