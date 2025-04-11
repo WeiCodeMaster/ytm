@@ -165,7 +165,7 @@ jobs:
               }));
               console.log(`[DEBUG] Current window.innerWidth=${dimsBefore.w}, window.innerHeight=${dimsBefore.h} (before resizing).`);
 
-              // First override screen.availWidth so that the checkFS condition fails.
+              // Override screen.availWidth so that the fullscreen check fails.
               console.log("[DEBUG] Overriding window.screen.availWidth to 1920...");
               await clientPage.evaluate(() => {
                 Object.defineProperty(window.screen, 'availWidth', {
@@ -226,11 +226,20 @@ jobs:
                 let newWindowDetected = false;
                 const checkStart = Date.now();
                 const maxCheckTime = 5000; // check for 5 seconds
+
                 const listener = async target => {
                   if (target.type() === 'page') {
                     newWindowDetected = true;
-                    console.log("New window opened after Start. Taking a screenshot...");
+                    console.log("New window opened after Start. Waiting 5 seconds for it to adjust...");
                     const popupPage = await target.page();
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    const dims = await popupPage.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+                    console.log("Popup window dimensions:", dims);
+                    if (dims.width === 0) {
+                      console.warn("Popup width is 0. Forcing viewport to 800x600...");
+                      await popupPage.setViewport({ width: 800, height: 600 });
+                    }
+                    console.log("Taking screenshot of popup window...");
                     await popupPage.screenshot({ path: path.join(screenshotsDir, "step8_new_window_after_start.png"), fullPage: true });
                     if (typeof browser.removeListener === 'function') {
                       browser.removeListener('targetcreated', listener);
@@ -240,7 +249,9 @@ jobs:
                     resolve();
                   }
                 };
+
                 browser.on('targetcreated', listener);
+
                 const interval = setInterval(() => {
                   if (Date.now() - checkStart >= maxCheckTime) {
                     clearInterval(interval);
