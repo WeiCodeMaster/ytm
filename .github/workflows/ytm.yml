@@ -118,6 +118,13 @@ jobs:
               await page.screenshot({ path: path.join(screenshotsDir, "step5_logged_in.png"), fullPage: true });
               console.log("Login successful.");
 
+              // NEW STEP: End All Sessions
+              console.log("Ending all sessions by clicking 'End All Sessions' button...");
+              await page.waitForSelector('#endAll', { visible: true, timeout: 30000 });
+              await page.click('#endAll');
+              await page.screenshot({ path: path.join(screenshotsDir, "step5_end_all_sessions.png"), fullPage: true });
+              console.log("All sessions ended.");
+
               // STEP 6: Launch the client.
               console.log("Clicking the Launch Client button...");
               await page.waitForSelector("a.open-client", { visible: true, timeout: 30000 });
