@@ -80,7 +80,7 @@ jobs:
               customConfig: {
                 defaultViewport: { width: 1280, height: 800 }
               },
-              turnstile: true, // Enables Cloudflare challenge solving if needed.
+              turnstile: true,
             });
 
             try {
@@ -114,7 +114,6 @@ jobs:
               } catch (navError) {
                 console.warn("Navigation did not occur; checking for login form disappearance.");
               }
-              // If login succeeded, the form is gone.
               await page.waitForFunction(() => !document.querySelector("#formLogin"), { timeout: 30000 });
               await page.screenshot({ path: path.join(screenshotsDir, "step5_logged_in.png"), fullPage: true });
               console.log("Login successful.");
@@ -125,22 +124,39 @@ jobs:
               
               // Listen for the new window (client page) to open.
               const newPagePromise = new Promise(resolve => {
-                browser.once('targetcreated', async target => {
+                const listener = async (target) => {
                   if (target.type() === 'page') {
                     console.log("New target of type 'page' detected. Retrieving client page...");
                     const newPage = await target.page();
                     console.log("Client page successfully retrieved.");
+                    if (typeof browser.off === 'function') {
+                      browser.off('targetcreated', listener);
+                    }
                     resolve(newPage);
                   }
-                });
+                };
+                if (typeof browser.on === 'function') {
+                  browser.on('targetcreated', listener);
+                }
+                // After 5 seconds, if no new window is detected, resolve with null.
+                setTimeout(() => {
+                  if (typeof browser.off === 'function') {
+                    browser.off('targetcreated', listener);
+                  }
+                  console.warn("No new window was detected within 5 seconds after Launch Client.");
+                  resolve(null);
+                }, 5000);
               });
-              
+
               // Click the button to open the client.
               await page.click("a.open-client");
               console.log("Launch Client button clicked. Waiting for client page to open...");
 
               // Get the new client page.
               const clientPage = await newPagePromise;
+              if (!clientPage) {
+                throw new Error("Client page did not open as expected.");
+              }
               console.log("Client page opened.");
 
               // Attempt a brief wait for navigation (5-second timeout).
@@ -149,7 +165,7 @@ jobs:
                 await clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 5000 });
                 console.log("Navigation event detected on the client page.");
               } catch (e) {
-                console.warn("No navigation event detected on the client page. Proceeding with a 5-second delay.");
+                console.warn("No navigation event detected on the client page. Proceeding with a fixed delay of 5 seconds.");
               }
               
               console.log("Starting a fixed 5-second delay before proceeding...");
@@ -161,9 +177,10 @@ jobs:
               console.log("Client page screenshot captured successfully.");
 
               // Step 7: Unmaximize the client window and click the Start button.
-              // (If the site specifically requires the window not to be fullscreen, let's do so now.)
               console.log("Unmaximizing client window...");
               await clientPage.setViewport({ width: 800, height: 600 });
+              // Dispatch a resize event so the UI updates.
+              await clientPage.evaluate(() => window.dispatchEvent(new Event('resize')));
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_unmaximized.png"), fullPage: true });
               console.log("Client window unmaximized.");
 
@@ -174,56 +191,47 @@ jobs:
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_after_start_click.png"), fullPage: true });
               console.log("Start button clicked.");
 
-              // Step 8: Check if a new window pops up, then wait 30 seconds.
+              // Step 8: Check if a new window opens after Start.
               console.log("Waiting to see if a new window opens after Start...");
-              const newWindowPromise = new Promise((resolve, reject) => {
+              const newWindowPromise = new Promise(resolve => {
                 let newWindowDetected = false;
-                const checkTime = Date.now();
-                const maxCheckInterval = 5000; // 5 seconds
-
-                // Listen for any new targets in that short window
                 const listener = async (target) => {
                   if (target.type() === 'page') {
                     console.log("New window opened after Start. Taking a screenshot...");
                     newWindowDetected = true;
-                    browser.removeListener('targetcreated', listener);
-
+                    if (typeof browser.off === 'function') {
+                      browser.off('targetcreated', listener);
+                    }
                     const popupPage = await target.page();
                     await popupPage.screenshot({ path: path.join(screenshotsDir, "step8_new_window_after_start.png"), fullPage: true });
                     resolve();
                   }
                 };
-                browser.on('targetcreated', listener);
-
-                // After 5s, if no new window detected, resolve anyway.
-                const waitInterval = setInterval(() => {
-                  if (Date.now() - checkTime >= maxCheckInterval) {
-                    clearInterval(waitInterval);
-                    browser.removeListener('targetcreated', listener);
-                    if (!newWindowDetected) {
-                      console.log("No new window was detected within 5 seconds of starting.");
-                    }
-                    resolve();
+                if (typeof browser.on === 'function') {
+                  browser.on('targetcreated', listener);
+                }
+                setTimeout(() => {
+                  if (!newWindowDetected) {
+                    console.log("No new window was detected within 5 seconds after Start.");
                   }
-                }, 500);
+                  if (typeof browser.off === 'function') {
+                    browser.off('targetcreated', listener);
+                  }
+                  resolve();
+                }, 5000);
               });
-
               await newWindowPromise;
-
-              // Regardless of window detection, do a final 30-second wait to let the Start process run.
+              
+              // Regardless of window detection, wait a final 30 seconds.
               console.log("Waiting 30 seconds after Start for any progress or changes...");
               await new Promise(resolve => setTimeout(resolve, 30000));
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step8_after_30secs.png"), fullPage: true });
               console.log("30-second wait completed. Final screenshot captured.");
-
             } catch (error) {
               console.error("An error occurred during the process:", error.message);
-              // Attempt a final screenshot on error.
               try {
                 await page.screenshot({ path: path.join(screenshotsDir, "error.png"), fullPage: true });
-              } catch (_) {
-                // If page is no longer available, ignore
-              }
+              } catch (_) { }
               process.exit(1);
             } finally {
               await browser.close();
