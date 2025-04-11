@@ -158,43 +158,54 @@ jobs:
               // STEP 7: Unmaximize the client window and click the Start button.
               console.log("[DEBUG] Attempting to unmaximize the client window...");
 
-              // 7a) Log current viewport from inside the page.
+              // Log current viewport from inside the page.
               let dimsBefore = await clientPage.evaluate(() => ({
                 w: window.innerWidth, 
                 h: window.innerHeight
               }));
               console.log(`[DEBUG] Current window.innerWidth=${dimsBefore.w}, window.innerHeight=${dimsBefore.h} (before resizing).`);
 
-              // 7b) Set viewport to a smaller size and try to unmaximize via window.resizeTo.
+              // First, override screen.availWidth to a higher number so that the checkFS condition fails.
+              console.log("[DEBUG] Overriding window.screen.availWidth to 1920...");
+              await clientPage.evaluate(() => {
+                Object.defineProperty(window.screen, 'availWidth', {
+                  get: () => 1920,
+                  configurable: true
+                });
+                // Dispatch resize event to re-run checkFS.
+                window.dispatchEvent(new Event('resize'));
+              });
+
+              // Then set the viewport to 800x600 and trigger window.resizeTo.
               const UNMAX_WIDTH = 800;
               const UNMAX_HEIGHT = 600;
-
               console.log(`[DEBUG] Setting viewport to ${UNMAX_WIDTH}x${UNMAX_HEIGHT}...`);
               await clientPage.setViewport({ width: UNMAX_WIDTH, height: UNMAX_HEIGHT });
 
               console.log("[DEBUG] Attempting window.resizeTo in page context...");
               await clientPage.evaluate((w, h) => {
                 window.resizeTo(w, h);
+                window.dispatchEvent(new Event('resize'));
               }, UNMAX_WIDTH, UNMAX_HEIGHT);
 
               // Wait for the page to adjust.
               await new Promise(resolve => setTimeout(resolve, 3000));
 
-              // 7c) Log new viewport dimensions from inside the page.
+              // Log new viewport dimensions from inside the page.
               let dimsAfter = await clientPage.evaluate(() => ({
                 w: window.innerWidth, 
                 h: window.innerHeight
               }));
               console.log(`[DEBUG] After resizing, window.innerWidth=${dimsAfter.w}, window.innerHeight=${dimsAfter.h}.`);
 
-              // 7d) Check whether the unmaximize error text is still visible.
+              // Check if the unmaximize error text is still visible.
               const bodyText = await clientPage.evaluate(() => document.body.innerText || "");
               if (bodyText.includes("Please unmaximize the client window")) {
                 console.warn("[DEBUG] The 'unmaximize window' error text is still present in the page.");
-                // Save the HTML content for further debugging.
+                console.warn("[DEBUG] Error snippet:", bodyText.substr(bodyText.indexOf("Please unmaximize"), 200));
+                // Save the current HTML for further debugging.
                 const errorHtml = await clientPage.content();
                 fs.writeFileSync(path.join(screenshotsDir, "step7_unmaximized_error.html"), errorHtml);
-                console.warn("[DEBUG] Saved HTML content for unmaximize error to step7_unmaximized_error.html.");
               } else {
                 console.log("[DEBUG] The 'unmaximize window' error text was not found in the document body.");
               }
