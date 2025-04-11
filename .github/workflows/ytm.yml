@@ -155,7 +155,7 @@ jobs:
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step6_client_opened.png"), fullPage: true });
               console.log("Client page screenshot captured.");
 
-              // STEP 7: Unmaximize and click the Start button.
+              // STEP 7: Unmaximize the client window and click the Start button.
               console.log("[DEBUG] Attempting to unmaximize the client window...");
 
               // 7a) Log current viewport from inside the page.
@@ -177,7 +177,7 @@ jobs:
                 window.resizeTo(w, h);
               }, UNMAX_WIDTH, UNMAX_HEIGHT);
 
-              // Wait briefly for the page to adjust.
+              // Wait for the page to adjust.
               await new Promise(resolve => setTimeout(resolve, 3000));
 
               // 7c) Log new viewport dimensions from inside the page.
@@ -187,11 +187,14 @@ jobs:
               }));
               console.log(`[DEBUG] After resizing, window.innerWidth=${dimsAfter.w}, window.innerHeight=${dimsAfter.h}.`);
 
-              // 7d) Check if the unmaximize error message is still visible.
+              // 7d) Check whether the unmaximize error text is still visible.
               const bodyText = await clientPage.evaluate(() => document.body.innerText || "");
               if (bodyText.includes("Please unmaximize the client window")) {
                 console.warn("[DEBUG] The 'unmaximize window' error text is still present in the page.");
-                console.warn("[DEBUG] Error snippet:", bodyText.substr(bodyText.indexOf("Please unmaximize"), 200));
+                // Save the HTML content for further debugging.
+                const errorHtml = await clientPage.content();
+                fs.writeFileSync(path.join(screenshotsDir, "step7_unmaximized_error.html"), errorHtml);
+                console.warn("[DEBUG] Saved HTML content for unmaximize error to step7_unmaximized_error.html.");
               } else {
                 console.log("[DEBUG] The 'unmaximize window' error text was not found in the document body.");
               }
@@ -257,7 +260,10 @@ jobs:
             } catch (error) {
               console.error("An error occurred during the process:", error.message);
               try {
+                const errorHtml = await page.content();
+                fs.writeFileSync(path.join(screenshotsDir, "error_page.html"), errorHtml);
                 await page.screenshot({ path: path.join(screenshotsDir, "error.png"), fullPage: true });
+                console.error("[DEBUG] Saved error HTML to error_page.html.");
               } catch (_) {}
               process.exit(1);
             } finally {
