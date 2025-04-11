@@ -267,7 +267,8 @@ jobs:
                 await clientPage.screenshot({ path: path.join(screenshotsDir, `step8_after_60secs_${i}.png`), fullPage: true });
                 console.log(`Iteration ${i}: 60-second wait completed. Final screenshot captured for iteration ${i}.`);
               } // End loop
-
+              await new Promise(resolve => setTimeout(resolve, 900000));
+              
             } catch (error) {
               console.error("An error occurred during the process:", error.message);
               try {
@@ -278,7 +279,6 @@ jobs:
               } catch (_) {}
               process.exit(1);
             } finally {
-              await new Promise(resolve => setTimeout(resolve, 900000));
               await browser.close();
             }
           })();
