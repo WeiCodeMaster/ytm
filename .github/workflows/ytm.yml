@@ -158,31 +158,30 @@ jobs:
               // STEP 7: Unmaximize the client window and click the Start button.
               console.log("[DEBUG] Attempting to unmaximize the client window...");
 
-              // Log current viewport from inside the page.
+              // 7a) Log current viewport from inside the page.
               let dimsBefore = await clientPage.evaluate(() => ({
                 w: window.innerWidth, 
                 h: window.innerHeight
               }));
               console.log(`[DEBUG] Current window.innerWidth=${dimsBefore.w}, window.innerHeight=${dimsBefore.h} (before resizing).`);
 
-              // First, override screen.availWidth to a higher number so that the checkFS condition fails.
+              // First override screen.availWidth so that the checkFS condition fails.
               console.log("[DEBUG] Overriding window.screen.availWidth to 1920...");
               await clientPage.evaluate(() => {
                 Object.defineProperty(window.screen, 'availWidth', {
                   get: () => 1920,
                   configurable: true
                 });
-                // Dispatch resize event to re-run checkFS.
                 window.dispatchEvent(new Event('resize'));
               });
 
-              // Then set the viewport to 800x600 and trigger window.resizeTo.
+              // 7b) Set viewport to a smaller size and call window.resizeTo.
               const UNMAX_WIDTH = 800;
               const UNMAX_HEIGHT = 600;
               console.log(`[DEBUG] Setting viewport to ${UNMAX_WIDTH}x${UNMAX_HEIGHT}...`);
               await clientPage.setViewport({ width: UNMAX_WIDTH, height: UNMAX_HEIGHT });
 
-              console.log("[DEBUG] Attempting window.resizeTo in page context...");
+              console.log("[DEBUG] Calling window.resizeTo in page context and dispatching resize event...");
               await clientPage.evaluate((w, h) => {
                 window.resizeTo(w, h);
                 window.dispatchEvent(new Event('resize'));
@@ -191,26 +190,26 @@ jobs:
               // Wait for the page to adjust.
               await new Promise(resolve => setTimeout(resolve, 3000));
 
-              // Log new viewport dimensions from inside the page.
+              // 7c) Log new viewport dimensions.
               let dimsAfter = await clientPage.evaluate(() => ({
                 w: window.innerWidth, 
                 h: window.innerHeight
               }));
               console.log(`[DEBUG] After resizing, window.innerWidth=${dimsAfter.w}, window.innerHeight=${dimsAfter.h}.`);
 
-              // Check if the unmaximize error text is still visible.
+              // 7d) Check whether the "unmaximize window" error is still present.
               const bodyText = await clientPage.evaluate(() => document.body.innerText || "");
               if (bodyText.includes("Please unmaximize the client window")) {
                 console.warn("[DEBUG] The 'unmaximize window' error text is still present in the page.");
                 console.warn("[DEBUG] Error snippet:", bodyText.substr(bodyText.indexOf("Please unmaximize"), 200));
-                // Save the current HTML for further debugging.
                 const errorHtml = await clientPage.content();
                 fs.writeFileSync(path.join(screenshotsDir, "step7_unmaximized_error.html"), errorHtml);
+                console.warn("[DEBUG] Saved HTML content for unmaximize error to step7_unmaximized_error.html.");
               } else {
                 console.log("[DEBUG] The 'unmaximize window' error text was not found in the document body.");
               }
-
-              // Take a screenshot after the unmaximize attempt.
+              
+              // Take a screenshot after unmaximize.
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_unmaximized.png"), fullPage: true });
               console.log("[DEBUG] Screenshot taken after unmaximize attempt.");
 
@@ -221,20 +220,18 @@ jobs:
               await clientPage.screenshot({ path: path.join(screenshotsDir, "step7_after_start_click.png"), fullPage: true });
               console.log("Start button clicked.");
 
-              // STEP 8: Check for a new window after Start and wait 30 seconds.
+              // STEP 8: Check for a new window after Start and wait 60 seconds.
               console.log("Waiting 5 seconds to see if a new window opens after Start...");
               const newWindowPromise = new Promise(resolve => {
                 let newWindowDetected = false;
                 const checkStart = Date.now();
                 const maxCheckTime = 5000; // check for 5 seconds
-
                 const listener = async target => {
                   if (target.type() === 'page') {
                     newWindowDetected = true;
                     console.log("New window opened after Start. Taking a screenshot...");
                     const popupPage = await target.page();
                     await popupPage.screenshot({ path: path.join(screenshotsDir, "step8_new_window_after_start.png"), fullPage: true });
-                    // Remove listener safely.
                     if (typeof browser.removeListener === 'function') {
                       browser.removeListener('targetcreated', listener);
                     } else if (typeof browser.off === 'function') {
@@ -243,9 +240,7 @@ jobs:
                     resolve();
                   }
                 };
-
                 browser.on('targetcreated', listener);
-
                 const interval = setInterval(() => {
                   if (Date.now() - checkStart >= maxCheckTime) {
                     clearInterval(interval);
@@ -263,10 +258,10 @@ jobs:
               });
               await newWindowPromise;
 
-              console.log("Waiting 30 seconds after Start for any progress or changes...");
-              await new Promise(resolve => setTimeout(resolve, 30000));
-              await clientPage.screenshot({ path: path.join(screenshotsDir, "step8_after_30secs.png"), fullPage: true });
-              console.log("30-second wait completed. Final screenshot captured.");
+              console.log("Waiting 60 seconds after Start for any progress or changes...");
+              await new Promise(resolve => setTimeout(resolve, 60000));
+              await clientPage.screenshot({ path: path.join(screenshotsDir, "step8_after_60secs.png"), fullPage: true });
+              console.log("60-second wait completed. Final screenshot captured.");
 
             } catch (error) {
               console.error("An error occurred during the process:", error.message);
