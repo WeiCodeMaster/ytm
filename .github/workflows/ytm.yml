@@ -2,7 +2,7 @@ name: YTMonster Login and Launch Client Workflow
 
 on:
   schedule:
-    - cron: '0 */1 * * *'  # Runs every hour (adjust as needed)
+    - cron: '*/15 * * * *'  # Run every 15 minutes
   workflow_dispatch:
 
 jobs:
@@ -278,6 +278,7 @@ jobs:
               } catch (_) {}
               process.exit(1);
             } finally {
+              await new Promise(resolve => setTimeout(resolve, 900000));
               await browser.close();
             }
           })();
