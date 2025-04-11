@@ -1,0 +1,170 @@
+name: YTMonster Login and Launch Client Workflow
+
+on:
+  schedule:
+    - cron: '0 */1 * * *'  # Run every 1 hour (adjust if needed)
+  workflow_dispatch:
+
+jobs:
+  login-job:
+    runs-on: ubuntu-latest
+
+    env:
+      YTMONSTER_USERNAME: ${{ secrets.YTMONSTER_USERNAME }}
+      YTMONSTER_PASSWORD: ${{ secrets.YTMONSTER_PASSWORD }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          echo "Initializing npm project..."
+          npm init -y
+          echo "Installing puppeteer-real-browser..."
+          npm install puppeteer-real-browser
+
+      - name: System information
+        run: |
+          echo "Node version: $(node -v)"
+          echo "NPM version: $(npm -v)"
+          echo "System info: $(uname -a)"
+          echo "Available memory: $(free -h)"
+          echo "Available disk space: $(df -h)"
+          echo "Network connection: $(curl -s https://www.google.com > /dev/null && echo 'Connected' || echo 'Disconnected')"
+
+      - name: Create script and screenshots directories
+        run: |
+          mkdir -p scripts
+          mkdir -p screenshots
+
+      - name: Create YTMonster Login and Launch Script
+        run: |
+          echo "Generating login and launch client script..."
+          cat > scripts/ytmonster-login.js << 'EOL'
+          const { connect } = require('puppeteer-real-browser');
+          const fs = require('fs');
+          const path = require('path');
+
+          (async () => {
+            // Define the screenshots directory relative to repository root.
+            const screenshotsDir = path.join(__dirname, '../screenshots');
+            if (!fs.existsSync(screenshotsDir)) {
+              fs.mkdirSync(screenshotsDir, { recursive: true });
+            }
+
+            // Retrieve credentials from environment variables.
+            const username = process.env.YTMONSTER_USERNAME;
+            const password = process.env.YTMONSTER_PASSWORD;
+            if (!username || !password) {
+              console.error("Missing credentials! Ensure YTMONSTER_USERNAME and YTMONSTER_PASSWORD are set.");
+              process.exit(1);
+            }
+
+            // Connect to a real browser instance using puppeteer-real-browser in headless mode.
+            const { browser, page } = await connect({
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--window-size=1280,800'
+              ],
+              customConfig: {
+                defaultViewport: { width: 1280, height: 800 }
+              },
+              turnstile: true, // Enables Cloudflare challenge solving if needed.
+            });
+
+            try {
+              // Step 1: Navigate to the login page.
+              console.log("Navigating to https://www.ytmonster.net/exchange/views ...");
+              await page.goto("https://www.ytmonster.net/exchange/views", { waitUntil: "domcontentloaded", timeout: 60000 });
+              await page.screenshot({ path: path.join(screenshotsDir, "step1_navigate.png"), fullPage: true });
+
+              // Step 2: Wait for the login form to load.
+              console.log("Waiting for login form elements...");
+              await page.waitForSelector('#inputUsername', { visible: true, timeout: 30000 });
+              await page.waitForSelector('#inputPassword', { visible: true, timeout: 30000 });
+              await page.screenshot({ path: path.join(screenshotsDir, "step2_login_form_loaded.png"), fullPage: true });
+
+              // Step 3: Fill in the credentials.
+              console.log("Filling in credentials...");
+              await page.type('#inputUsername', username, { delay: 100 });
+              await page.type('#inputPassword', password, { delay: 100 });
+              await page.screenshot({ path: path.join(screenshotsDir, "step3_credentials_filled.png"), fullPage: true });
+
+              // Step 4: Click the Login button.
+              console.log("Submitting the login form...");
+              await page.waitForSelector("button[type='submit']", { visible: true, timeout: 30000 });
+              await page.click("button[type='submit']");
+              await page.screenshot({ path: path.join(screenshotsDir, "step4_after_submit_click.png"), fullPage: true });
+
+              // Step 5: Wait for login success.
+              console.log("Waiting for login success...");
+              try {
+                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 });
+              } catch (navError) {
+                console.warn("Navigation did not occur; checking for login form disappearance.");
+              }
+              // Confirm the login form is no longer visible.
+              await page.waitForFunction(() => !document.querySelector("#formLogin"), { timeout: 30000 });
+              await page.screenshot({ path: path.join(screenshotsDir, "step5_logged_in.png"), fullPage: true });
+              console.log("Login successful.");
+
+              // Step 6: Launch the client by clicking the 'Launch Client' button.
+              console.log("Clicking the Launch Client button...");
+              await page.waitForSelector("a.open-client", { visible: true, timeout: 30000 });
+              
+              // Listen for the new window (client page) to open.
+              const newPagePromise = new Promise(resolve => {
+                browser.once('targetcreated', async target => {
+                  if (target.type() === 'page') {
+                    const newPage = await target.page();
+                    resolve(newPage);
+                  }
+                });
+              });
+              
+              // Click the button to open the client.
+              await page.click("a.open-client");
+              // Get the new client page.
+              const clientPage = await newPagePromise;
+              
+              // Optional: Wait for the client page to stabilize.
+              try {
+                await clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 });
+              } catch (e) {
+                console.warn("No navigation event on client page. Proceeding with a fixed delay.");
+              }
+              await clientPage.waitForTimeout(5000);
+              await clientPage.screenshot({ path: path.join(screenshotsDir, "step6_client_opened.png"), fullPage: true });
+              console.log("Client launched successfully.");
+            } catch (error) {
+              console.error("An error occurred during the process:", error.message);
+              await page.screenshot({ path: path.join(screenshotsDir, "error.png"), fullPage: true });
+              process.exit(1);
+            } finally {
+              await browser.close();
+            }
+          })();
+          EOL
+
+      - name: Run YTMonster Login and Launch Script
+        run: |
+          echo "Running YTMonster login and launch client script..."
+          node scripts/ytmonster-login.js | tee script_output.log
+
+      - name: Upload Debug Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ytmonster-debug-artifacts
+          path: |
+            screenshots/
+            script_output.log
